@@ -5,6 +5,7 @@ import torch.optim as optim
 import numpy as np
 import gym
 import tqdm
+import os
 class experience_replay():
 
     # state is a numpy array of shape (memory_size, state_size)
@@ -154,6 +155,14 @@ class Agent():
     def train_agent(self, episodes=1000, batch_size=32, update_target_network=100, save_path='model.pth'):
         total_step = 0
         epoch = 0
+        save_freq = 100
+        # logging file
+        log_f = open(log_f_name, "w+")
+        log_f.write('episode,timestep,reward\n')
+
+        log_freq = 10
+        log_running_reward = 0
+        log_running_episodes = 0
         for episode in range(episodes):
             episode_reward = 0
             state,_ = self.env.reset()
@@ -173,24 +182,56 @@ class Agent():
                 if step % update_freq == 0:
                     if self.memory.size >= batch_size :
                         self.train(batch_size)
+                        # log in logging file
+                if total_step % log_freq == 0 :
+                            # log average reward till last episode
+                            if log_running_episodes == 0:
+                                log_running_episodes = 1
+                            log_avg_reward = log_running_reward / log_running_episodes
+                            log_avg_reward = round(log_avg_reward, 4)
 
+                            log_f.write('{},{},{}\n'.format(episode, total_step, log_avg_reward))
+                            log_f.flush()
+
+                            log_running_reward = 0
+                            log_running_episodes = 0
 
                 total_step += 1
                 step += 1
 
-
+            log_running_reward += episode_reward
+            log_running_episodes += 1
             if episode % 10 == 0:
                 print(f'Episode {episode+1} finished, reward : {episode_reward}')
-
+                self.save(save_path)
                 print(f'epsilon : {self.epsilon}')
                 self.update_epsilon()
 
         self.save(save_path)
         self.env.close()
-
+        log_f.close()
+env_name = 'PongNoFrameskip-v4'
 # instantiate the environment, atari pong
+#### log files for multiple runs are NOT overwritten
+log_dir = "PPO_logs"
+if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
-env = gym.make('PongNoFrameskip-v4')
+log_dir = log_dir + '/' + env_name + '/'
+if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+#### get number of log files in log directory
+run_num = 0
+current_num_files = next(os.walk(log_dir))[2]
+run_num = len(current_num_files)
+
+#### create new log file for each run
+log_f_name = log_dir + '/PPO_' + env_name + "_log_" + str(run_num) + ".csv"
+
+print("current logging run number for " + env_name + " : ", run_num)
+print("logging at : " + log_f_name)
+env = gym.make(env_name)
 # wrappe the environment
 env = gym.wrappers.AtariPreprocessing(env, screen_size=84, grayscale_obs=True, frame_skip=4, noop_max=30, scale_obs=True)
 env = gym.wrappers.FrameStack(env, num_stack=4)
