@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import stable_baselines3
 import numpy as np
 import gym
 import tqdm
@@ -88,8 +89,11 @@ class Agent():
         self.optimizer = optim.Adam(self.network.parameters(), lr=lr)
         self.loss = nn.MSELoss()
 
-    def act(self, state):
+    def act(self, state,deterministic=False):
         print(f"state shape : {state.shape}")
+        if deterministic:
+            with torch.no_grad():
+                return torch.argmax(self.network(state)).item()
         with torch.no_grad():
             if np.random.rand() < self.epsilon:
                 return self.env.action_space.sample()
@@ -133,17 +137,17 @@ class Agent():
         torch.save(self.network.state_dict(), path)
 
     def load(self, path='model.pth'):
-        self.network.load_state_dict(torch.load(path))
-        self.target_network.load_state_dict(torch.load(path))
+        self.network.load_state_dict(torch.load(path, map_location=self.device))
+        self.target_network.load_state_dict(torch.load(path, map_location=self.device))
 
     def play(self, episodes=10):
         for episode in range(episodes):
             state,_ = self.env.reset()
             done = False
             while not done:
-                #self.env.render()
+                self.env.render()
                 state  = np.array(state)
-                action = self.act(torch.from_numpy(state).float().to(self.device))
+                action = self.act(torch.from_numpy(state).float().to(self.device),deterministic=True)
                 next_state, reward, done, truncated, info = self.env.step(action)
                 next_state = np.array(next_state)
 
@@ -231,7 +235,8 @@ log_f_name = log_dir + '/PPO_' + env_name + "_log_" + str(run_num) + ".csv"
 
 print("current logging run number for " + env_name + " : ", run_num)
 print("logging at : " + log_f_name)
-env = gym.make(env_name)
+env = gym.make(env_name,render_mode='human')
+
 # wrappe the environment
 env = gym.wrappers.AtariPreprocessing(env, screen_size=84, grayscale_obs=True, frame_skip=4, noop_max=30, scale_obs=True)
 env = gym.wrappers.FrameStack(env, num_stack=4)
@@ -239,7 +244,9 @@ print(f'shape : {env.observation_space.shape}')
 # instantiate the agent
 agent = Agent(env, 10000, 256, 0.9999, 1.0, 0.996, 0.01, 0.0001)
 print(f'Agent : {agent.network}')
+agent.load('model.pth')
 print(f'Lets play randomly before training  ! ')
+agent.play()
 # print a line of "
 print("-"*50)
 # play randomly before training

@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 
 def save_graph():
     print("============================================================================================")
-    # env_name = 'CartPole-v1'
+    env_name = 'CartPole-v1'
     # env_name = 'LunarLander-v2'
     # env_name = 'BipedalWalker-v2'
     #env_name = 'RoboschoolWalker2d-v1'
-    env_name = 'PongNoFrameskip-v4'
+    #env_name = 'PongNoFrameskip-v4'
 
     fig_num = 0  #### change this to prevent overwriting figures in same env_name folder
     plot_avg = True  # plot average of all runs; else plot all runs separately
