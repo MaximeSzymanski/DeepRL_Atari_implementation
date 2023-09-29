@@ -235,7 +235,7 @@ log_f_name = log_dir + '/PPO_' + env_name + "_log_" + str(run_num) + ".csv"
 
 print("current logging run number for " + env_name + " : ", run_num)
 print("logging at : " + log_f_name)
-env = gym.make(env_name,render_mode='human')
+env = gym.make(env_name,render_mode='human',difficulty=3)
 
 # wrappe the environment
 env = gym.wrappers.AtariPreprocessing(env, screen_size=84, grayscale_obs=True, frame_skip=4, noop_max=30, scale_obs=True)
