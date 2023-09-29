@@ -145,9 +145,13 @@ def train_agent(agent : Agent, experience_replay : ExperienceReplay):
             entropy_loss = new_dist.entropy().mean()
             agent.writer.add_scalar('entropy', entropy_loss, agent.number_epochs)
             loss = actor_loss + agent.value_loss_coef * critic_loss - agent.entropy_coef * entropy_loss
+            agent.writer.add_scalar('Value loss ', critic_loss, agent.number_epochs)
+            agent.writer.add_scalar('Policy loss ', actor_loss, agent.number_epochs)
+            # clip the gradients
 
             agent.optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(agent.parameters(), agent.max_grad_norm)
             agent.optimizer.step()
     experience_replay.clean_buffer()
     agent.decay_learning_rate()
