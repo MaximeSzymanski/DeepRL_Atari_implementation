@@ -86,10 +86,11 @@ class Agent():
             while not done:
                 state  = np.array(state)
                 action = self.act(torch.from_numpy(state).float().to(self.device),deterministic=True)
+                done = 1 if done else 0
+
                 next_state, reward, done, truncated, info = self.env.step(action)
                 next_state = np.array(next_state)
 
-                done = 1 if done else 0
                 state = next_state
             print(f'Episode {episode+1} finished with reward {reward}')
         self.env.close()
