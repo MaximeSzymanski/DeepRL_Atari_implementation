@@ -2,16 +2,14 @@ import torch
 # import writer tensorboard
 import stable_baselines3
 from torch.utils.tensorboard import SummaryWriter
-import gym
-import os
 
-from PPO.agent import Agent
-from PPO.experience_replay import ExperienceReplay
-from PPO.interaction_env import test_agent, rollout_episode
+from On_policy.PPO.agent import Agent
+from On_policy.experience_replay import ExperienceReplay
+from On_policy.PPO.interaction_env import rollout_episode
 
 if __name__ == '__main__':
     config = {
-        'env_name': 'BreakoutNoFrameskip-v4',
+        'env_name': 'PongNoFrameskip-v4',
         'gamma': 0.99,
         'gae': 0.95,
         'clip': 0.2,

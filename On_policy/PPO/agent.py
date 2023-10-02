@@ -2,6 +2,9 @@ import torch
 from torch import nn as nn
 from torch.distributions import Categorical
 import os
+from On_policy.cnn import CNN
+from On_policy.actor import Actor
+from On_policy.critic import Critic
 
 
 class Agent(nn.Module):
@@ -14,24 +17,10 @@ class Agent(nn.Module):
         self.writer = writer
         self.save_path = save_path
         self.device = device
-        self.cnn = nn.Sequential(
-            nn.Conv2d(4, 16, kernel_size=8, stride=4),
-            nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=4, stride=2),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(32 * 9 * 9, 256),
-
-        )
-        self.actor = nn.Sequential(
-            nn.Linear(256,action_size),
-            nn.Softmax(dim=-1)
-
-        )
-        self.critic = nn.Sequential(
-            nn.Linear(256, 1)
-        )
-        self.number_epochs =0
+        self.cnn = CNN()
+        self.actor = Actor(action_size=action_size)
+        self.critic = Critic(hidden_size=256)
+        self.number_epochs = 0
         print(self.actor)
         print(self.critic)
         self.K_epochs = K_epochs
@@ -40,21 +29,14 @@ class Agent(nn.Module):
         self.batch_size = batch_size
         self.ortogonal_initialization()
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        # print self.parameters()
+        self.lr = lr
         self.value_loss_coef = value_loss_coef
         self.entropy_coef = entropy_coef
         self.clip_grad_norm = clip_grad_norm
         self.learning_rate_decay = learining_rate_decay
         self.clip_param = clip_param
-        """self.layers = nn.Sequential(
-            nn.Conv2d(4, 16, kernel_size=8, stride=4),
-            nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=4, stride=2),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(32 * 9 * 9, 256),
-            nn.ReLU(),
-            nn.Linear(256, 4)
-        )"""
+
 
     def ortogonal_initialization(self):
 
@@ -62,6 +44,7 @@ class Agent(nn.Module):
             if isinstance(m, nn.Linear):
                 nn.init.orthogonal_(m.weight, gain=1)
                 nn.init.constant_(m.bias, 0)
+
         for m in self.critic.modules():
             if isinstance(m, nn.Linear):
                 nn.init.orthogonal_(m.weight, gain=1)
@@ -97,5 +80,5 @@ class Agent(nn.Module):
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
 
-        path = self.save_path + str(self.number_epochs) + '.pth'
+        path = self.save_path + 'model' + '.pth'
         torch.save(self.state_dict(), path)

@@ -3,9 +3,9 @@ import torch
 from torch import nn as nn
 from torch.nn import functional as F
 
-from DDPG.experience_replay import experience_replay
-from DDPG.models import Critic, Actor
-from DDPG.utils import Orstein_Uhlenbeck
+from Off_policy.experience_replay import Experience_replay
+from Off_policy.DDPG.models import Critic, Actor
+from Off_policy.DDPG.utils import Orstein_Uhlenbeck
 
 
 class Agent(nn.Module):
@@ -23,7 +23,7 @@ class Agent(nn.Module):
         self.optimizer_critic = torch.optim.Adam(self.critic.parameters(),lr=lr_critic)
         self.optimizer_actor = torch.optim.Adam(self.actor.parameters(),lr=lr_actor)
         self.env = env
-        self.memory = experience_replay(replay_memory_size, replay_memory_sample_size, state_size)
+        self.memory = Experience_replay(replay_memory_size, replay_memory_sample_size, state_size)
         self.batch_size = replay_memory_sample_size
         self.discount_factor = discount_factor
         self.tau = tau

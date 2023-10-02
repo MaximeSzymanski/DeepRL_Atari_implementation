@@ -2,9 +2,9 @@ import numpy as np
 import torch
 from torch import optim as optim, nn as nn
 
-from DQN.experience_replay import experience_replay
-from DQN.model import DQN
-
+from Off_policy.experience_replay import Experience_replay
+from Off_policy.DQN.model import DQN
+import os
 
 class Agent():
     def __init__(self, env, memory_size, sample_size, gamma, epsilon, epsilon_decay, epsilon_min, lr,device,
@@ -15,7 +15,7 @@ class Agent():
         self.env = env
         self.number_of_updates = 0
         self.device = device
-        self.memory = experience_replay(memory_size, sample_size)
+        self.memory = Experience_replay(memory_size, sample_size,state_size=(4,84,84))
         self.gamma = gamma
         self.seed = np.random.seed(seed)
         self.epsilon = epsilon
@@ -73,7 +73,11 @@ class Agent():
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
     def save(self):
-        torch.save(self.network.state_dict(), self.model_path)
+        model_path = self.model_path + 'model.pth'
+        # create directory if not exist
+        if not os.path.exists(self.model_path):
+            os.makedirs(self.model_path)
+        torch.save(self.network.state_dict(),model_path)
 
     def load(self, path='model.pth'):
         self.network.load_state_dict(torch.load(path, map_location=self.device))
@@ -128,7 +132,7 @@ class Agent():
                 total_step += 1
                 step += 1
 
-            self.writer.add_scalar('reward', episode_reward, episode)
+            self.writer.add_scalar('Reward', episode_reward, total_step)
             if episode % 10 == 0:
                 print(f'Episode {episode+1} finished, reward : {episode_reward}')
                 self.save()

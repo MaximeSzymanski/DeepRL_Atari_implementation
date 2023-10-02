@@ -2,7 +2,7 @@ import gym
 # import SummaryWriter
 from torch.utils.tensorboard import SummaryWriter
 
-from DDPG.agent import Agent
+from Off_policy.DDPG import Agent
 
 if __name__ == '__main__':
     config = {

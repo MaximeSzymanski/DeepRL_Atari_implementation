@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class experience_replay():
+class Experience_replay():
 
     # state is a numpy array of shape (memory_size, state_size)
 
@@ -9,7 +9,7 @@ class experience_replay():
     memory_size = 0
     sample_size = 0
 
-    def __init__(self,memory_size,sample_size,state_size=(4,84,84)):
+    def __init__(self,memory_size,sample_size,state_size):
         self.memory_size = memory_size
         self.sample_size = sample_size
         shape_state = (memory_size,) + state_size

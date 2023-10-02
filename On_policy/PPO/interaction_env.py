@@ -2,11 +2,9 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
-from PPO.agent import Agent
-from PPO.experience_replay import ExperienceReplay
-from PPO.utils import compute_advantages
-
-
+from On_policy.PPO.agent import Agent
+from On_policy.experience_replay import ExperienceReplay
+from On_policy.utils import compute_advantages_ppo
 
 
 def test_agent(env,agent):
@@ -48,9 +46,12 @@ def rollout_episode(env, agent, experience_replay, render=False,writer=None,conf
     step = 0
     step_counter = np.zeros(env.num_envs)
     print(f"num_envs : {env.num_envs}")
-    for episode in range(10000):
+    max_episode = 10000
+    for episode in range(max_episode):
         # reset the environment
-
+        frac = 1.0 - (episode - 1.0) / max_episode
+        lr_now = agent.lr * frac
+        agent.optimizer.param_groups[0]['lr'] = lr_now
 
         # while the episode is not done
         for horizon in range(agent.num_steps):
@@ -78,7 +79,7 @@ def rollout_episode(env, agent, experience_replay, render=False,writer=None,conf
 
             for worker in range(env.num_envs):
                 if done_list[worker] == True:
-                    agent.writer.add_scalar('Reward', total_reward[worker], total_time_step)
+                    agent.writer.add_scalar('Reward', total_reward[worker], total_time_step+worker)
                     print(f'Episode  finished after {step_counter[worker]} steps, total reward : {total_reward[worker]},total time step : {total_time_step}')
                     total_reward[worker] = 0
                     episode_index += 1
@@ -102,7 +103,7 @@ def rollout_episode(env, agent, experience_replay, render=False,writer=None,conf
 def train_agent(agent : Agent, experience_replay : ExperienceReplay):
 
 
-    advantages = compute_advantages(experience_replay, agent, gamma=0.99, lamda=0.95)
+    advantages = compute_advantages_ppo(experience_replay, agent, gamma=0.99, lamda=0.95)
     # convert the data to torch tensors
     states = torch.from_numpy(experience_replay.states).to(agent.device)
     actions = torch.from_numpy(experience_replay.actions).to(agent.device)
