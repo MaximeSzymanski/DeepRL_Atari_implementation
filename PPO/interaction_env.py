@@ -94,7 +94,7 @@ def rollout_episode(env, agent, experience_replay, render=False,writer=None,conf
 
         train_agent(agent, experience_replay)
 
-
+        agent.save_model()
 
         # return the total
 
@@ -151,7 +151,7 @@ def train_agent(agent : Agent, experience_replay : ExperienceReplay):
 
             agent.optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(agent.parameters(), agent.max_grad_norm)
+            torch.nn.utils.clip_grad_norm_(agent.parameters(), agent.clip_grad_norm)
             agent.optimizer.step()
     experience_replay.clean_buffer()
     agent.decay_learning_rate()

@@ -1,18 +1,18 @@
 import torch
 from torch import nn as nn
 from torch.distributions import Categorical
-
+import os
 
 
 class Agent(nn.Module):
 
     def __init__(self, state_size, action_size,num_workers=8,num_steps=128,batch_size=256,lr=0.003,writer=None,device='cpu',
                  learining_rate_decay=0.99,value_loss_coef=0.5,entropy_coef=0.01,clip_grad_norm=0.5,
-                 clip_param=0.2,
+                 clip_param=0.2, save_path='trained_models/ppo',
                  K_epochs=10):
         super(Agent, self).__init__()
         self.writer = writer
-
+        self.save_path = save_path
         self.device = device
         self.cnn = nn.Sequential(
             nn.Conv2d(4, 16, kernel_size=8, stride=4),
@@ -92,5 +92,10 @@ class Agent(nn.Module):
         for param_group in self.optimizer.param_groups:
             param_group['lr'] *= self.learning_rate_decay
 
-    def save_model(self, path='ppo.pth'):
+    def save_model(self):
+        # create folder if not exists
+        if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
+
+        path = self.save_path + str(self.number_epochs) + '.pth'
         torch.save(self.state_dict(), path)

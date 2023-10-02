@@ -41,12 +41,13 @@ seed = config.get('seed',1)
 sample_size = env.observation_space.shape[0]
 device = config.get('device','cpu')
 num_frames = config.get('num_frames',1e6)
+model_path = config.get('model_path','trained_models/dqn') + env_name + '/'
 writer = SummaryWriter(config.get('tensorboard_path','runs/dqn'))
 env = gym.wrappers.AtariPreprocessing(env, screen_size=84, grayscale_obs=True, frame_skip=4, noop_max=30, scale_obs=True)
 env = gym.wrappers.FrameStack(env, num_stack=4)
 agent = Agent(env=env,memory_size=memory_size, sample_size=sample_size, gamma=gamma, epsilon=epsilon,
              epsilon_decay=epsilon_decay,epsilon_min=min_epsilon, lr=learning_rate, seed=seed, device=device,batch_size=batch_size,
-              model_path=config.get('model_path','trained_models/dqn'),writer=writer)
+              model_path=model_path,writer=writer)
 print(f'Agent : {agent.network}')
 print(f'Lets play randomly before training  ! ')
 #agent.play()
