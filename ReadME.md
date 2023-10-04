@@ -18,5 +18,12 @@
 #### Training Video ####
  <img src="readme_files/video/ppo/LunarLanderv2/PPO_lunarlander.gif" width=100%> 
 
-### Atari Pong ###
+### Atari Pong (PPO) ###
+
+
+
+| Step 0                                             | Step 900 000                                            | Step 1 500 000 (final)                                   |
+|----------------------------------------------------|---------------------------------------------------------|----------------------------------------------------------|
+| <img src="readme_files/video/ppo/Pong/step_0.gif"> | <img src="readme_files/video/ppo/Pong/step_900_000.gif"> |  <img src="readme_files/video/ppo/Pong/step_final.gif">  | 
+
 #### Reward Curves ####

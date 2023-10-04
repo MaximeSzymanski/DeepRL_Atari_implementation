@@ -187,6 +187,8 @@ if __name__ == '__main__':
         def save_model(self, path='ppo.pth'):
             torch.save(self.state_dict(), path)
 
+        def load_model(self, path='ppo.pth'):
+            self.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
 
     def compute_advantages(experience_replay: ExperienceReplay, agent: Agent, gamma=0.99, lamda=0.95):
 
@@ -358,7 +360,7 @@ if __name__ == '__main__':
     Agent.to(device)
     optimizer = torch.optim.Adam(Agent.parameters(), lr=lr)
     number_of_episodes = 0
-
+    Agent.load_model('weights/ppo/Pong/weight_pong.pth')
     for i in range(100000):
         rollout_episode(env, Agent, ExperienceReplay, render=True)
         number_of_episodes += 1
