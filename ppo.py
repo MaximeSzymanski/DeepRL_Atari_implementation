@@ -12,8 +12,9 @@ import gym
 import os
 
 if __name__ == '__main__':
-
-    writer = SummaryWriter(log_dir='runs/ppo/LunarLander-v2')
+    log_running_reward = 0
+    log_running_episode = 0
+    writer = SummaryWriter(log_dir='breakout/ppo')
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     ###################### logging ######################
     #### log files for multiple runs are NOT overwritten
@@ -23,34 +24,32 @@ if __name__ == '__main__':
     env_name = 'CartPole-v1'
     log_dir = log_dir + '/' + env_name + '/'
     if not os.path.exists(log_dir):
-              os.makedirs(log_dir)
+        os.makedirs(log_dir)
 
     #### get number of log files in log directory
     run_num = 0
     current_num_files = next(os.walk(log_dir))[2]
     run_num = len(current_num_files)
 
-    lr = 0.00025
+    lr = 0.000025
+
 
     class ExperienceReplay():
-        def __init__(self,minibatch_size,buffer_size,state_size,num_workers =2 ,action_size=6,horizon=128):
+        def __init__(self, minibatch_size, buffer_size, state_size, num_workers=2, action_size=6, horizon=128):
             self.minibatch_size = minibatch_size
             self.buffer_size = buffer_size
-            self.state_size = 8
+            self.state_size = state_size
             print(f'buffer size : {buffer_size}')
             print(f'horizon : {horizon}')
             print(f'number of workers : {num_workers}')
             self.num_worker = num_workers
             self.horizon = horizon
-            self.reset_buffer(self.horizon, self.state_size)
+            self.reset_buffer(horizon, state_size)
             print(f'buffer size : {self.states.shape}')
 
-
         def reset_buffer(self, horizon, state_size):
-            transformed_buffer_size =   (horizon,) + (self.num_worker,)
-            buffer_state_size = transformed_buffer_size + (state_size,)
-
-
+            transformed_buffer_size = (horizon,) + (self.num_worker,)
+            buffer_state_size = transformed_buffer_size + state_size
 
             self.actions = np.empty(transformed_buffer_size, dtype=np.int32)
             self.rewards = np.empty(transformed_buffer_size, dtype=np.float32)
@@ -64,7 +63,7 @@ if __name__ == '__main__':
             self.head = 0
             self.size = 0
 
-        def add_step(self,state,action,reward,next_state,done,value,olg_log_prob):
+        def add_step(self, state, action, reward, next_state, done, value, olg_log_prob):
             # assert the buffer is not full
             assert self.size < self.buffer_size, "Buffer is full"
 
@@ -84,22 +83,22 @@ if __name__ == '__main__':
             # assert the buffer is not empty
             assert self.size > self.minibatch_size, "Buffer is empty"
             # get random indices
-            indices = np.random.randint(0,self.size,size=self.minibatch_size)
+            indices = np.random.randint(0, self.size, size=self.minibatch_size)
             # return the minibatch
-            return self.states[indices],self.actions[indices],self.rewards[indices],self.next_states[indices],self.dones[indices],self.olg_log_probs[indices],self.values[indices]
+            return self.states[indices], self.actions[indices], self.rewards[indices], self.next_states[indices], \
+            self.dones[indices], self.olg_log_probs[indices], self.values[indices]
 
         def flatten_buffer(self):
             # flatten the buffer
-            #self.states = self.states.reshape(-1, 4, 84, 84)
-            self.states = self.states.reshape(-1,8)
+            self.states = self.states.reshape(-1, 4, 84, 84)
             self.actions = self.actions.flatten()
             self.rewards = self.rewards.flatten()
-            #self.next_states = self.next_states.reshape(-1, 4, 84, 84)
-            self.next_states = self.next_states.reshape(-1,8)
+            self.next_states = self.next_states.reshape(-1, 4, 84, 84)
             self.dones = self.dones.flatten()
             self.olg_log_probs = self.olg_log_probs.flatten()
             self.values = self.values.flatten()
             self.advantages = self.advantages.flatten()
+
         def clean_buffer(self):
             self.reset_buffer(self.horizon, self.state_size)
 
@@ -109,10 +108,10 @@ if __name__ == '__main__':
 
     class Agent(nn.Module):
 
-        def __init__(self, state_size, action_size,num_workers=8,num_steps=128,batch_size=256):
+        def __init__(self, state_size, action_size, num_workers=8, num_steps=128, batch_size=256):
             super(Agent, self).__init__()
-            print(f'state size : {state_size} actor')
-            """self.cnn = nn.Sequential(
+
+            self.cnn = nn.Sequential(
                 nn.Conv2d(4, 16, kernel_size=8, stride=4),
                 nn.ReLU(),
                 nn.Conv2d(16, 32, kernel_size=4, stride=2),
@@ -120,24 +119,16 @@ if __name__ == '__main__':
                 nn.Flatten(),
                 nn.Linear(32 * 9 * 9, 256),
 
-            )"""
+            )
             self.actor = nn.Sequential(
-                nn.Linear(8,256),
-                nn.ReLU(),
-                nn.Linear(256,256),
-                nn.ReLU(),
-                nn.Linear(256,4),
+                nn.Linear(256, action_size),
                 nn.Softmax(dim=-1)
 
             )
             self.critic = nn.Sequential(
-                nn.Linear(8, 256),
-                nn.ReLU(),
-                nn.Linear(256, 256),
-                nn.ReLU(),
                 nn.Linear(256, 1)
             )
-            self.number_epochs =0
+            self.number_epochs = 0
             print(self.actor)
             print(self.critic)
             self.num_workers = num_workers
@@ -159,35 +150,35 @@ if __name__ == '__main__':
 
             for m in self.actor.modules():
                 if isinstance(m, nn.Linear):
-                    nn.init.orthogonal_(m.weight, gain=1)
+                    nn.init.orthogonal_(m.weight, np.sqrt(2))
                     nn.init.constant_(m.bias, 0)
             for m in self.critic.modules():
                 if isinstance(m, nn.Linear):
-                    nn.init.orthogonal_(m.weight, gain=1)
+                    nn.init.orthogonal_(m.weight, np.sqrt(2))
                     nn.init.constant_(m.bias, 0)
+            for m in self.cnn.modules():
+                if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                    nn.init.orthogonal_(m.weight, np.sqrt(2))
+                    nn.init.constant_(m.bias, 0)
+
         def forward(self, x):
-            #x = x / 255.0
-            #x = self.cnn(x)
-            print(f"forward shape : {x.shape}")
+            x = x / 255.0
+            x = self.cnn(x)
             logits = self.actor(x)
             value = self.critic(x)
             dist = Categorical(logits)
 
             return dist, value
 
-        def get_action(self,obs):
+        def get_action(self, obs):
             with torch.no_grad():
-                print(f"observation shape : {obs.shape}")
                 dist, value = self.forward(obs)
                 action = dist.sample()
                 log_prob = dist.log_prob(action)
 
-
-
             return action.cpu().detach().numpy(), log_prob.cpu().detach().numpy(), value.cpu().detach().numpy()
 
-
-        def decay_learning_rate(self,optimizer,decay_rate=0.99):
+        def decay_learning_rate(self, optimizer, decay_rate=0.99):
             print("Decaying learning rate")
             writer.add_scalar("Learning rate", optimizer.param_groups[0]['lr'], self.number_epochs)
             for param_group in optimizer.param_groups:
@@ -196,29 +187,29 @@ if __name__ == '__main__':
         def save_model(self, path='ppo.pth'):
             torch.save(self.state_dict(), path)
 
-    def compute_advantages(experience_replay : ExperienceReplay, agent : Agent,gamma = 0.99, lamda = 0.95):
+
+    def compute_advantages(experience_replay: ExperienceReplay, agent: Agent, gamma=0.99, lamda=0.95):
 
         for worker in range(experience_replay.num_worker):
-            values = experience_replay.values[:,worker]
+            values = experience_replay.values[:, worker]
 
-            advantages = np.zeros(agent.num_steps,dtype=np.float32)
+            advantages = np.zeros(agent.num_steps, dtype=np.float32)
             last_advantage = 0
             last_value = values[-1]
             for i in reversed(range(agent.num_steps)):
-                mask = 1 - experience_replay.dones[i,worker]
+                mask = 1 - experience_replay.dones[i, worker]
                 last_value = last_value * mask
                 last_advantage = last_advantage * mask
-                delta = experience_replay.rewards[i,worker] + gamma * last_value - values[i]
+                delta = experience_replay.rewards[i, worker] + gamma * last_value - values[i]
                 last_advantage = delta + gamma * lamda * last_advantage
                 advantages[i] = last_advantage
                 last_value = values[i]
 
-            experience_replay.advantages[:,worker] = advantages
+            experience_replay.advantages[:, worker] = advantages
         pass
         experience_replay.flatten_buffer()
         advantages = experience_replay.advantages
         return advantages
-
 
 
     def rollout_episode(env, agent, experience_replay, render=False):
@@ -226,24 +217,23 @@ if __name__ == '__main__':
         time_step = 0
         log_running_reward = 0
         log_running_episodes = 0
-        state, _ = env.reset()
-        print(f'state shape : {state}')
+        state = env.reset()
         state = np.array(state)
-        #state = np.transpose(state, (0, 3, 1, 2))
+        state = np.transpose(state, (0, 3, 1, 2))
         print(f'state shape : {state.shape}')
         # reset the buffer
 
         # reset the total reward
-        total_reward = np.zeros(1)
+        total_reward = np.zeros(env.num_envs)
         # reset the done flag
         log_freq = 100
         total_time_step = 0
         done = False
         step = 0
-        step_counter = np.zeros(1)
-        for episode in range(10000):
+        step_counter = np.zeros(env.num_envs)
+        print(f"num_envs : {env.num_envs}")
+        for episode in range(1000000):
             # reset the environment
-
 
             # while the episode is not done
             for horizon in range(agent.num_steps):
@@ -253,27 +243,26 @@ if __name__ == '__main__':
                 total_time_step += 1
                 # get the action
 
-                action, log_prob,value  = agent.get_action(torch.from_numpy(state).to(device))
+                action, log_prob, value = agent.get_action(torch.from_numpy(state).to(device))
                 # take the action
-                print(f"action : {action}")
-                next_state, reward, done_list, truncated_list , _ = env.step(action)
+
+                next_state, reward, done_list, _ = env.step(action)
                 next_state = np.array(next_state)
-                #next_state = np.transpose(next_state, (0, 3, 1, 2))
+                next_state = np.transpose(next_state, (0, 3, 1, 2))
                 # add the step to the buffer
-                done_to_add = 1 if done else 0
-                experience_replay.add_step(state, action, reward, next_state, done_to_add,  value, log_prob)
+                done_to_add = [1 if done else 0 for done in done_list]
+                experience_replay.add_step(state, action, reward, next_state, done_to_add, value, log_prob)
                 # update the total reward
                 total_reward += reward
 
                 # add 1 to each value of the numpy array
                 step_counter += 1
 
-
-                for worker in range(1):
-                    if done_list == True or truncated_list == True:
-
+                for worker in range(env.num_envs):
+                    if done_list[worker] == True:
                         writer.add_scalar('Reward', total_reward[worker], total_time_step)
-                        print(f'Episode  finished after {step_counter[worker]} steps, total reward : {total_reward[worker]},total time step : {time_step}')
+                        print(
+                            f'Episode  finished after {step_counter[worker]} steps, total reward : {total_reward[worker]},total time step : {time_step}')
                         total_reward[worker] = 0
                         episode_index += 1
                         step_counter[worker] = 0
@@ -284,23 +273,21 @@ if __name__ == '__main__':
                 # render the environment
                 # log in logging file
 
-            print(f"-"*50)
+            print(f"-" * 50)
             print(f"updating the agent...")
-            print(f"-"*50)
+            print(f"-" * 50)
             train_agent(agent, experience_replay)
-            if episode % 100 ==0:
+            if episode % 100 == 0:
                 Agent.save_model(f'breakout/ppo_{episode}.pth')
 
-
-
-
             # return the total
-    def train_agent(agent : Agent, experience_replay : ExperienceReplay):
 
-        advantages = compute_advantages(experience_replay,agent,gamma=0.99,lamda=0.95)
+
+    def train_agent(agent: Agent, experience_replay: ExperienceReplay):
+
+        advantages = compute_advantages(experience_replay, agent, gamma=0.99, lamda=0.95)
         # convert the data to torch tensors
         states = torch.from_numpy(experience_replay.states).to(device)
-        print(f"states shape : {states.shape}")
         actions = torch.from_numpy(experience_replay.actions).to(device)
         old_log_probs = torch.from_numpy(experience_replay.olg_log_probs).to(device).detach()
 
@@ -309,19 +296,17 @@ if __name__ == '__main__':
 
         returns = advantages + values
 
-
         # split the data into batches
         numer_of_samples = agent.num_steps * experience_replay.num_worker
 
-        number_mini_batch =  numer_of_samples // experience_replay.minibatch_size
-        assert number_mini_batch > 0 , "batch size is too small"
-        assert numer_of_samples % experience_replay.minibatch_size  == 0 , "batch size is not a multiple of the number of samples"
+        number_mini_batch = numer_of_samples // experience_replay.minibatch_size
+        assert number_mini_batch > 0, "batch size is too small"
+        assert numer_of_samples % experience_replay.minibatch_size == 0, "batch size is not a multiple of the number of samples"
 
         indices = np.arange(numer_of_samples)
         np.random.shuffle(indices)
         for _ in range(4):
             for batch_index in range(number_mini_batch):
-
                 start = batch_index * experience_replay.minibatch_size
                 end = (batch_index + 1) * experience_replay.minibatch_size
                 indice_batch = indices[start:end]
@@ -338,7 +323,6 @@ if __name__ == '__main__':
                 actor_loss = -torch.min(surr1, surr2).mean()
                 critic_loss = F.mse_loss(new_values.squeeze(), returns[indice_batch])
 
-
                 entropy_loss = new_dist.entropy().mean()
                 writer.add_scalar('entropy', entropy_loss, agent.number_epochs)
                 loss = actor_loss + 0.5 * critic_loss - 0.01 * entropy_loss
@@ -347,43 +331,36 @@ if __name__ == '__main__':
                 loss.backward()
                 optimizer.step()
             experience_replay.clean_buffer()
-            #agent.decay_learning_rate(optimizer)
-
+            # agent.decay_learning_rate(optimizer)
 
         # create the dataset
 
 
-
-    env_name = 'LunarLander-v2'
-
+    env_name = "PongNoFrameskip-v4"
+    env = gym.make(env_name, render_mode="rgb_array")
     num_workers = 8
-    num_steps = 2048
+    num_steps = 128
     batch_size = 512
-    env = gym.make(env_name,render_mode='rgb_array')
-    env = gym.wrappers.RecordVideo(env, f'breakout/video/{env_name}',episode_trigger=lambda x : not x % 100)
 
+    env = stable_baselines3.common.env_util.make_atari_env(env_name, n_envs=num_workers, seed=0)
+    env = stable_baselines3.common.vec_env.vec_frame_stack.VecFrameStack(env, n_stack=4)
+    env = stable_baselines3.common.vec_env.VecVideoRecorder(venv=env, video_folder='breakout/video',
+                                                            record_video_trigger=lambda x: not x % 100000)
 
-
-    #env = stable_baselines3.common.env_util.make_atari_env(env_name, n_envs=num_workers, seed=0)
-    #env = stable_baselines3.common.vec_env.vec_frame_stack.VecFrameStack(env, n_stack=4)
-    #env = stable_baselines3.common.vec_env.VecVideoRecorder(venv=env,video_folder ='breakout/video',record_video_trigger=lambda x : not x % 100000)
-
-    state_size = env.observation_space.shape[0]
+    state_size = (4, 84, 84)
     print(f'state size : {state_size}')
-    action_size = 4
+    action_size = env.action_space.n
     print(f'action size : {action_size}')
-    ExperienceReplay = ExperienceReplay(batch_size,num_steps*num_workers,state_size=state_size,num_workers=num_workers,action_size=1,horizon=num_steps)
-    print(f'sample action : {env.action_space.sample()}')
-    Agent = Agent(state_size,action_size,num_workers=num_workers,num_steps=num_steps,batch_size=batch_size)
+    ExperienceReplay = ExperienceReplay(batch_size, num_steps * num_workers, state_size=state_size,
+                                        num_workers=num_workers, action_size=1, horizon=num_steps)
+
+    Agent = Agent(state_size, action_size, num_workers=num_workers, num_steps=num_steps, batch_size=batch_size)
     Agent.to(device)
-    optimizer = torch.optim.Adam(Agent.parameters(),lr=lr)
+    optimizer = torch.optim.Adam(Agent.parameters(), lr=lr)
     number_of_episodes = 0
-    Agent.load_state_dict(torch.load('breakout/ppo_500.pth'))
-    rollout_episode(env, Agent, ExperienceReplay, render=True)
 
-    """  for i in range(100000):
-        rollout_episode(env,Agent,ExperienceReplay,render=True)
-        number_of_episodes+= 1"""
-
-        #print(number_of_episodes)
+    for i in range(100000):
+        rollout_episode(env, Agent, ExperienceReplay, render=True)
+        number_of_episodes += 1
+        # print(number_of_episodes)
 
