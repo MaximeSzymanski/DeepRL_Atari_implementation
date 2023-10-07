@@ -170,10 +170,15 @@ if __name__ == '__main__':
 
             return dist, value
 
-        def get_action(self, obs):
+        def get_action(self, obs, deterministic=False):
             with torch.no_grad():
                 dist, value = self.forward(obs)
-                action = dist.sample()
+                if deterministic:
+                    action = torch.argmax(dist.probs).unsqueeze(0)
+
+                else:
+                    action = dist.sample()
+
                 log_prob = dist.log_prob(action)
 
             return action.cpu().detach().numpy(), log_prob.cpu().detach().numpy(), value.cpu().detach().numpy()
@@ -213,6 +218,67 @@ if __name__ == '__main__':
         advantages = experience_replay.advantages
         return advantages
 
+    def test_agent(env, agent, render=False):
+        episode_index = 0
+        time_step = 0
+
+
+        state = env.reset()
+        state = np.array(state)
+        state = np.transpose(state, (0, 3, 1, 2))
+        # reset the buffer
+
+        # reset the total reward
+        total_reward = np.zeros(env.num_envs)
+        # reset the done flag
+        log_freq = 100
+        total_time_step = 0
+        done = False
+        step = 0
+        step_counter = np.zeros(env.num_envs)
+        print(f"num_envs : {env.num_envs}")
+        for episode in range(1000000):
+            # reset the environment
+
+            # while the episode is not done
+            for horizon in range(agent.num_steps):
+                env.render()
+                # increment the step counter
+                step += 1
+                time_step += agent.num_workers
+                total_time_step += 1
+                # get the action
+
+                action, log_prob, value = agent.get_action(torch.from_numpy(state).to(device),deterministic=True)
+                # take the action
+
+                next_state, reward, done_list, _ = env.step(action)
+                next_state = np.array(next_state)
+                next_state = np.transpose(next_state, (0, 3, 1, 2))
+                # add the step to the buffer
+                done_to_add = [1 if done else 0 for done in done_list]
+                # update the total reward
+                total_reward += reward
+
+                # add 1 to each value of the numpy array
+                step_counter += 1
+
+                for worker in range(env.num_envs):
+                    if done_list[worker] == True:
+                        writer.add_scalar('Reward', total_reward[worker], total_time_step)
+                        print(
+                            f'Episode  finished after {step_counter[worker]} steps, total reward : {total_reward[worker]},total time step : {time_step}')
+                        total_reward[worker] = 0
+                        episode_index += 1
+                        step_counter[worker] = 0
+                        done_list[worker] = False
+
+                # update the state
+                state = next_state
+                # render the environment
+                # log in logging file
+
+
 
     def rollout_episode(env, agent, experience_replay, render=False):
         episode_index = 0
@@ -239,6 +305,7 @@ if __name__ == '__main__':
 
             # while the episode is not done
             for horizon in range(agent.num_steps):
+                env.render()
                 # increment the step counter
                 step += 1
                 time_step += agent.num_workers
@@ -278,9 +345,9 @@ if __name__ == '__main__':
             print(f"-" * 50)
             print(f"updating the agent...")
             print(f"-" * 50)
-            train_agent(agent, experience_replay)
-            if episode % 100 == 0:
-                Agent.save_model(f'breakout/ppo_{episode}.pth')
+            #train_agent(agent, experience_replay)
+            #if episode % 100 == 0:
+                #Agent.save_model(f'breakout/ppo_{episode}.pth')
 
             # return the total
 
@@ -338,16 +405,16 @@ if __name__ == '__main__':
         # create the dataset
 
 
-    env_name = "PongNoFrameskip-v4"
+    env_name = "BreakoutNoFrameskip-v4"
     env = gym.make(env_name, render_mode="rgb_array")
-    num_workers = 8
+    num_workers = 1
     num_steps = 128
     batch_size = 512
 
-    env = stable_baselines3.common.env_util.make_atari_env(env_name, n_envs=num_workers, seed=0)
+    env = stable_baselines3.common.env_util.make_atari_env(env_name, n_envs=num_workers, seed=0,env_kwargs={'render_mode': 'rgb_array'})
     env = stable_baselines3.common.vec_env.vec_frame_stack.VecFrameStack(env, n_stack=4)
     env = stable_baselines3.common.vec_env.VecVideoRecorder(venv=env, video_folder='breakout/video',
-                                                            record_video_trigger=lambda x: not x % 100000)
+                                                            record_video_trigger=lambda x: not x % 100000,video_length=10000)
 
     state_size = (4, 84, 84)
     print(f'state size : {state_size}')
@@ -360,9 +427,6 @@ if __name__ == '__main__':
     Agent.to(device)
     optimizer = torch.optim.Adam(Agent.parameters(), lr=lr)
     number_of_episodes = 0
-    Agent.load_model('weights/ppo/Pong/weight_pong.pth')
-    for i in range(100000):
-        rollout_episode(env, Agent, ExperienceReplay, render=True)
-        number_of_episodes += 1
-        # print(number_of_episodes)
+    Agent.load_model('weights/ppo/Breakout/breakout_ppo_weight_end.pth')
 
+    test_agent(env, Agent)
