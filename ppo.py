@@ -204,10 +204,19 @@ if __name__ == '__main__':
                 if isinstance(m, nn.Linear):
                     nn.init.orthogonal_(m.weight, np.sqrt(2))
                     nn.init.constant_(m.bias, 0)
+            for m in self.layer_between_lstm_and_actor_critic.modules():
+                if isinstance(m, nn.Linear):
+                    nn.init.orthogonal_(m.weight, np.sqrt(2))
+                    nn.init.constant_(m.bias, 0)
             for m in self.critic.modules():
                 if isinstance(m, nn.Linear):
                     nn.init.orthogonal_(m.weight, np.sqrt(2))
                     nn.init.constant_(m.bias, 0)
+            for name, param in self.lstm.named_parameters():
+                if "bias" in name:
+                    nn.init.constant_(param, 0)
+                elif "weight" in name:
+                    nn.init.orthogonal_(param, 1.0)
             """for m in self.cnn.modules():
                 if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
                     nn.init.orthogonal_(m.weight, np.sqrt(2))
