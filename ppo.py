@@ -8,13 +8,15 @@ import stable_baselines3
 from torch.utils.tensorboard import SummaryWriter
 import unittest
 import torch.nn.functional as F
-import gym
+import gymnasium as gym
 import os
+
+import StocksEnv
 
 if __name__ == '__main__':
     log_running_reward = 0
     log_running_episode = 0
-    writer = SummaryWriter(log_dir='breakout/ppo')
+    writer = SummaryWriter(log_dir='Stocksenv')
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     ###################### logging ######################
     #### log files for multiple runs are NOT overwritten
@@ -34,6 +36,55 @@ if __name__ == '__main__':
     lr = 0.000025
 
 
+    def get_mask(num_workers, action_size: int, state: torch.tensor,batch_size=0) -> torch.Tensor:
+        """Get a mask for the action probabilities
+
+        Arguments
+        ---------
+        action_size: int
+            The number of actions
+
+        Returns
+        -------
+        mask: torch.Tensor
+            The mask for the action probabilities
+        """
+        # Scale values to match the scale of calculations
+        if (state.shape[0]) == batch_size:
+            num_workers = batch_size
+        total_mask_array = np.zeros((num_workers, 3))
+        for i in range(num_workers):
+            number_stocks_in_portfolio = state[i][-1][-1].item()
+            price_of_stock = state[i][-1][1].item()
+            portfolio_value = state[i][-1][-2].item()
+
+            number_stocks_in_portfolio *= 10
+            portfolio_value *= 10000
+            price_of_stock *= 10
+
+            # Initialize mask
+            action_mask = np.zeros(3)
+
+            # Check for invalid values
+            if np.isinf(portfolio_value) or np.isnan(portfolio_value) or np.isinf(price_of_stock) or np.isnan(
+                    price_of_stock):
+                print('Portfolio value or stock price is either infinite or NaN.')
+
+
+            # Always able to hold
+            action_mask[0] = 1
+            # Able to buy if there's enough money, considering 10 stocks at a time
+            if portfolio_value >= 10 * price_of_stock:
+                action_mask[1] = 1
+
+            # Able to sell if there are enough stocks in the portfolio
+            if number_stocks_in_portfolio >= 10:
+                action_mask[2] = 1
+
+            # action_mask = torch.ones(action_size)
+            # return action_mask
+            total_mask_array[i] = action_mask
+        return total_mask_array
     class ExperienceReplay():
         def __init__(self, minibatch_size, buffer_size, state_size, num_workers=2, action_size=6, horizon=128):
             self.minibatch_size = minibatch_size
@@ -90,10 +141,10 @@ if __name__ == '__main__':
 
         def flatten_buffer(self):
             # flatten the buffer
-            self.states = self.states.reshape(-1, 4, 84, 84)
+            self.states = self.states.reshape(-1, 90,4)
             self.actions = self.actions.flatten()
             self.rewards = self.rewards.flatten()
-            self.next_states = self.next_states.reshape(-1, 4, 84, 84)
+            self.next_states = self.next_states.reshape(-1, 90,4)
             self.dones = self.dones.flatten()
             self.olg_log_probs = self.olg_log_probs.flatten()
             self.values = self.values.flatten()
@@ -111,14 +162,11 @@ if __name__ == '__main__':
         def __init__(self, state_size, action_size, num_workers=8, num_steps=128, batch_size=256):
             super(Agent, self).__init__()
 
-            self.cnn = nn.Sequential(
-                nn.Conv2d(4, 16, kernel_size=8, stride=4),
-                nn.ReLU(),
-                nn.Conv2d(16, 32, kernel_size=4, stride=2),
-                nn.ReLU(),
-                nn.Flatten(),
-                nn.Linear(32 * 9 * 9, 256),
-
+            self.lstm = nn.LSTM(input_size=4, hidden_size=256, num_layers=1, batch_first=True,
+                                bidirectional=True)
+            self.layer_between_lstm_and_actor_critic = nn.Sequential(
+                nn.Linear(256*2, 256),
+                nn.ReLU()
             )
             self.actor = nn.Sequential(
                 nn.Linear(256, action_size),
@@ -127,6 +175,10 @@ if __name__ == '__main__':
             )
             self.critic = nn.Sequential(
                 nn.Linear(256, 1)
+            )
+
+            self.attention_layer = nn.Sequential(
+                nn.Linear(256*2,1)
             )
             self.number_epochs = 0
             print(self.actor)
@@ -156,23 +208,36 @@ if __name__ == '__main__':
                 if isinstance(m, nn.Linear):
                     nn.init.orthogonal_(m.weight, np.sqrt(2))
                     nn.init.constant_(m.bias, 0)
-            for m in self.cnn.modules():
+            """for m in self.cnn.modules():
                 if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
                     nn.init.orthogonal_(m.weight, np.sqrt(2))
-                    nn.init.constant_(m.bias, 0)
+                    nn.init.constant_(m.bias, 0)"""
 
         def forward(self, x):
-            x = x / 255.0
-            x = self.cnn(x)
+            obs = x
+            out, _ = self.lstm(x)
+            # keep only the last output of the lstm for each batch
+            out = out[:, -1, :]
+            x = self.layer_between_lstm_and_actor_critic(out)
             logits = self.actor(x)
+            mask_array = get_mask(self.num_workers, 3, obs,self.batch_size)
+            mask_array = torch.from_numpy(mask_array).float().to(device)
+
+            logits = logits * mask_array
             value = self.critic(x)
+
             dist = Categorical(logits)
 
             return dist, value
 
+
+
+
+
         def get_action(self, obs, deterministic=False):
             with torch.no_grad():
                 dist, value = self.forward(obs)
+
                 if deterministic:
                     action = torch.argmax(dist.probs).unsqueeze(0)
 
@@ -225,7 +290,6 @@ if __name__ == '__main__':
 
         state = env.reset()
         state = np.array(state)
-        state = np.transpose(state, (0, 3, 1, 2))
         # reset the buffer
 
         # reset the total reward
@@ -234,6 +298,7 @@ if __name__ == '__main__':
         log_freq = 100
         total_time_step = 0
         done = False
+        finished_episodes = 0
         step = 0
         step_counter = np.zeros(env.num_envs)
         print(f"num_envs : {env.num_envs}")
@@ -254,7 +319,6 @@ if __name__ == '__main__':
 
                 next_state, reward, done_list, _ = env.step(action)
                 next_state = np.array(next_state)
-                next_state = np.transpose(next_state, (0, 3, 1, 2))
                 # add the step to the buffer
                 done_to_add = [1 if done else 0 for done in done_list]
                 # update the total reward
@@ -265,11 +329,13 @@ if __name__ == '__main__':
 
                 for worker in range(env.num_envs):
                     if done_list[worker] == True:
-                        writer.add_scalar('Reward', total_reward[worker], total_time_step)
+                        writer.add_scalar('Reward', total_reward[worker], finished_episodes)
                         print(
                             f'Episode  finished after {step_counter[worker]} steps, total reward : {total_reward[worker]},total time step : {time_step}')
                         total_reward[worker] = 0
+                        total_time_step += 1
                         episode_index += 1
+                        finished_episodes += 1
                         step_counter[worker] = 0
                         done_list[worker] = False
 
@@ -287,7 +353,6 @@ if __name__ == '__main__':
         log_running_episodes = 0
         state = env.reset()
         state = np.array(state)
-        state = np.transpose(state, (0, 3, 1, 2))
         print(f'state shape : {state.shape}')
         # reset the buffer
 
@@ -297,6 +362,7 @@ if __name__ == '__main__':
         log_freq = 100
         total_time_step = 0
         done = False
+        finished_episodes = 0
         step = 0
         step_counter = np.zeros(env.num_envs)
         print(f"num_envs : {env.num_envs}")
@@ -315,9 +381,8 @@ if __name__ == '__main__':
                 action, log_prob, value = agent.get_action(torch.from_numpy(state).to(device))
                 # take the action
 
-                next_state, reward, done_list, _ = env.step(action)
+                next_state, reward, done_list, _  = env.step(action)
                 next_state = np.array(next_state)
-                next_state = np.transpose(next_state, (0, 3, 1, 2))
                 # add the step to the buffer
                 done_to_add = [1 if done else 0 for done in done_list]
                 experience_replay.add_step(state, action, reward, next_state, done_to_add, value, log_prob)
@@ -329,10 +394,11 @@ if __name__ == '__main__':
 
                 for worker in range(env.num_envs):
                     if done_list[worker] == True:
-                        writer.add_scalar('Reward', total_reward[worker], total_time_step)
+                        writer.add_scalar('Reward', total_reward[worker], finished_episodes)
                         print(
                             f'Episode  finished after {step_counter[worker]} steps, total reward : {total_reward[worker]},total time step : {time_step}')
                         total_reward[worker] = 0
+                        finished_episodes += 1
                         episode_index += 1
                         step_counter[worker] = 0
                         done_list[worker] = False
@@ -345,7 +411,7 @@ if __name__ == '__main__':
             print(f"-" * 50)
             print(f"updating the agent...")
             print(f"-" * 50)
-            #train_agent(agent, experience_replay)
+            train_agent(agent, experience_replay)
             #if episode % 100 == 0:
                 #Agent.save_model(f'breakout/ppo_{episode}.pth')
 
@@ -353,6 +419,7 @@ if __name__ == '__main__':
 
 
     def train_agent(agent: Agent, experience_replay: ExperienceReplay):
+
 
         advantages = compute_advantages(experience_replay, agent, gamma=0.99, lamda=0.95)
         # convert the data to torch tensors
@@ -407,16 +474,23 @@ if __name__ == '__main__':
 
     env_name = "BreakoutNoFrameskip-v4"
     env = gym.make(env_name, render_mode="rgb_array")
-    num_workers = 1
+    num_workers = 8
     num_steps = 128
     batch_size = 512
 
-    env = stable_baselines3.common.env_util.make_atari_env(env_name, n_envs=num_workers, seed=0,env_kwargs={'render_mode': 'rgb_array'})
-    env = stable_baselines3.common.vec_env.vec_frame_stack.VecFrameStack(env, n_stack=4)
-    env = stable_baselines3.common.vec_env.VecVideoRecorder(venv=env, video_folder='breakout/video',
-                                                            record_video_trigger=lambda x: not x % 100000,video_length=10000)
+    gym.envs.register(
+        id='StocksEnv',
+        entry_point='StocksEnv:StockEnv'
+    )
+    env = gym.make('StocksEnv')
+    def make_env():
+        def _thunk():
+            env = gym.make('StocksEnv')
+            return env
 
-    state_size = (4, 84, 84)
+        return _thunk
+    env = stable_baselines3.common.vec_env.DummyVecEnv([make_env() for i in range(num_workers)])
+    state_size = (90,4)
     print(f'state size : {state_size}')
     action_size = env.action_space.n
     print(f'action size : {action_size}')
@@ -427,6 +501,6 @@ if __name__ == '__main__':
     Agent.to(device)
     optimizer = torch.optim.Adam(Agent.parameters(), lr=lr)
     number_of_episodes = 0
-    Agent.load_model('weights/ppo/Breakout/breakout_ppo_weight_end.pth')
+    #Agent.load_model('weights/ppo/Breakout/breakout_ppo_weight_end.pth')
 
-    test_agent(env, Agent)
+    rollout_episode(env, Agent, ExperienceReplay)
